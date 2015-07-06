@@ -59,9 +59,9 @@ namespace FixVox
             using (var zip = new ZipArchive(inputStream, ZipArchiveMode.Read))
             {
                 var sorted = zip.Entries
-                    .Where(e => string.Equals(Path.GetExtension(e.Name), ".mp3", StringComparison.OrdinalIgnoreCase))
-                    .OrderBy(e => e.Name, StringComparer.InvariantCultureIgnoreCase)
-                    .ToArray();
+                                .Where(e => string.Equals(Path.GetExtension(e.Name), ".mp3", StringComparison.OrdinalIgnoreCase))
+                                .OrderBy(e => e.Name, StringComparer.InvariantCultureIgnoreCase)
+                                .ToArray();
 
                 var dir = directoryInfo.FullName;
 
@@ -69,8 +69,8 @@ namespace FixVox
                 await Task.Factory.StartNew(() => zip.ExtractToDirectory(dir), CancellationToken.None, TaskCreationOptions.LongRunning, ZipScheduler).ConfigureAwait(false);
 
                 var files = directoryInfo.EnumerateFiles("*.mp3")
-                    .OrderBy(fi => fi.Name, StringComparer.InvariantCultureIgnoreCase)
-                    .ToArray();
+                                         .OrderBy(fi => fi.Name, StringComparer.InvariantCultureIgnoreCase)
+                                         .ToArray();
 
                 // TODO: Compare "files" with "sorted"?  They should match.
 

@@ -19,9 +19,7 @@
 // DEALINGS IN THE SOFTWARE.
 
 using System;
-using System.IO;
 using System.Threading.Tasks;
-using File = TagLib.File;
 
 namespace FixVox
 {
@@ -32,9 +30,9 @@ namespace FixVox
             if (args.Length < 1)
             {
                 args = new[]
-                {
-                    Environment.CurrentDirectory
-                };
+                       {
+                           Environment.CurrentDirectory
+                       };
             }
 
             try

@@ -43,36 +43,36 @@ namespace FixVox
         public async Task<IEnumerable<string>> ProcessFilesAsync(string[] args, Func<Stream, DirectoryInfo, Task<bool>> transform)
         {
             var fileTasks = args.AsParallel()
-                .SelectMany(arg =>
-                {
-                    try
-                    {
-                        var attr = File.GetAttributes(arg);
+                                .SelectMany(arg =>
+                                            {
+                                                try
+                                                {
+                                                    var attr = File.GetAttributes(arg);
 
-                        if (FileAttributes.Directory == (attr & FileAttributes.Directory))
-                            return Directory.EnumerateFiles(arg, "*.zip", SearchOption.AllDirectories);
+                                                    if (FileAttributes.Directory == (attr & FileAttributes.Directory))
+                                                        return Directory.EnumerateFiles(arg, "*.zip", SearchOption.AllDirectories);
 
-                        if (0 == (attr & (FileAttributes.ReadOnly | FileAttributes.Offline | FileAttributes.ReparsePoint)))
-                        {
-                            var fileInfo = new FileInfo(arg);
+                                                    if (0 == (attr & (FileAttributes.ReadOnly | FileAttributes.Offline | FileAttributes.ReparsePoint)))
+                                                    {
+                                                        var fileInfo = new FileInfo(arg);
 
-                            return new[] { fileInfo.FullName };
-                        }
-                    }
-                    catch (IOException)
-                    { }
+                                                        return new[] { fileInfo.FullName };
+                                                    }
+                                                }
+                                                catch (IOException)
+                                                { }
 
-                    return new string[] { };
-                })
-                .Distinct(StringComparer.InvariantCultureIgnoreCase)
-                .Select(filename => ProcessFileAsync(filename, transform))
-                .ToArray();
+                                                return new string[] { };
+                                            })
+                                .Distinct(StringComparer.InvariantCultureIgnoreCase)
+                                .Select(filename => ProcessFileAsync(filename, transform))
+                                .ToArray();
 
             await Task.WhenAll(fileTasks).ConfigureAwait(false);
 
             return fileTasks.Select(fileTask => fileTask.Result)
-                .Where(fileName => null != fileName)
-                .ToArray();
+                            .Where(fileName => null != fileName)
+                            .ToArray();
         }
 
         async Task<string> ProcessFileAsync(string filename, Func<Stream, DirectoryInfo, Task<bool>> transform)
