@@ -1,4 +1,4 @@
-// Copyright (c) 2015 Henric Jungheim <software@henric.org>
+// Copyright (c) 2015-2016 Henric Jungheim <software@henric.org>
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a
 // copy of this software and associated documentation files (the "Software"),
@@ -19,6 +19,7 @@
 // DEALINGS IN THE SOFTWARE.
 
 using System;
+using System.Diagnostics;
 
 namespace FixVox
 {
