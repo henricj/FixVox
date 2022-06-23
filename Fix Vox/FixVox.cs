@@ -19,6 +19,7 @@
 // DEALINGS IN THE SOFTWARE.
 
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
@@ -98,7 +99,7 @@ namespace FixVox
             return true;
         }
 
-        string GetTrackFormat(uint tracks)
+        static string GetTrackFormat(uint tracks)
         {
             var digits = 1;
 
@@ -115,7 +116,7 @@ namespace FixVox
             return sb.ToString();
         }
 
-        string GetTrackName(string trackFormat, uint trackId)
+        static string GetTrackName(string trackFormat, uint trackId)
         {
             return trackId.ToString(trackFormat, CultureInfo.InvariantCulture) + ".mp3";
         }
@@ -204,7 +205,7 @@ namespace FixVox
             }
         }
 
-        string ScrubFileName(string path)
+        static string ScrubFileName(string path)
         {
             path = path.Normalize();
 
@@ -265,7 +266,8 @@ namespace FixVox
 
         static async Task<TimeSpan> MeasureDurationAsync(Stream input)
         {
-            var buffer = new byte[64 * 1024];
+            var buffer = ArrayPool<byte>.Shared.Rent(64 * 1024);
+
             var mp3 = new Mp3FrameHeader();
             var total = TimeSpan.Zero;
             var bufferOffset = 0;
@@ -274,7 +276,7 @@ namespace FixVox
 
             for (; ; )
             {
-                var read = await input.ReadAsync(buffer, bufferOffset, buffer.Length - bufferOffset).ConfigureAwait(false);
+                var read = await input.ReadAsync(buffer.AsMemory(bufferOffset, buffer.Length - bufferOffset)).ConfigureAwait(false);
 
                 if (read < 1)
                     break;
@@ -340,6 +342,8 @@ namespace FixVox
                     Debug.Assert(false, "Can't happen...");
                 }
             }
+
+            ArrayPool<byte>.Shared.Return(buffer);
 
             return total;
         }

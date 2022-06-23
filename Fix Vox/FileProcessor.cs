@@ -62,7 +62,7 @@ namespace FixVox
                                                 catch (IOException)
                                                 { }
 
-                                                return new string[] { };
+                                                return Array.Empty<string>();
                                             })
                                 .Distinct(StringComparer.InvariantCultureIgnoreCase)
                                 .Select(filename => ProcessFileAsync(filename, transform))

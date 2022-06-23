@@ -248,8 +248,7 @@ namespace FixVox
 
             if (string.IsNullOrEmpty(Name))
             {
-                Name = string.Format("MP3 {0}, {1} sample {2}kHz bitrate {3}kHz {4} channels",
-                    VersionName[versionCode], LayerName[layerCode], sampleRate / 1000.0, bitRate / 1000.0, Channels);
+                Name = $"MP3 {VersionName[versionCode]}, {LayerName[layerCode]} sample {sampleRate / 1000.0}kHz bitrate {bitRate / 1000.0}kHz {Channels} channels";
             }
 #if DEBUG
             if (verbose)
@@ -325,7 +324,7 @@ namespace FixVox
             return (samplesPerFrame8 * bitrate / sampleRate + padding) * slotSize;
         }
 
-        TimeSpan GetDuration(int version, int layer, int sampleRate)
+        static TimeSpan GetDuration(int version, int layer, int sampleRate)
         {
             var samples = (1 == version) ? SamplesV1[layer] : SamplesV2[layer];
 
