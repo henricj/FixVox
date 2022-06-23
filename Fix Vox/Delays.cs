@@ -23,7 +23,7 @@ using System.Threading.Tasks;
 
 namespace FixVox
 {
-    public sealed class Delays
+    public static class Delays
     {
         /// <summary>
         ///     We don't need crypto, but it is thread safe and we use it for delays so the extra CPU

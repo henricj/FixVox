@@ -29,7 +29,7 @@ namespace FixVox
 {
     public sealed class FileProcessor : IDisposable
     {
-        readonly TempDirManager _tempDirManager = new TempDirManager();
+        readonly TempDirManager _tempDirManager = new();
 
         #region IDisposable Members
 
@@ -47,20 +47,30 @@ namespace FixVox
                                             {
                                                 try
                                                 {
-                                                    var attr = File.GetAttributes(arg);
-
-                                                    if (FileAttributes.Directory == (attr & FileAttributes.Directory))
-                                                        return Directory.EnumerateFiles(arg, "*.zip", SearchOption.AllDirectories);
-
-                                                    if (0 == (attr & (FileAttributes.ReadOnly | FileAttributes.Offline | FileAttributes.ReparsePoint)))
+                                                    var fileInfo = new FileInfo(arg);
+                                                    if (fileInfo.Exists)
                                                     {
-                                                        var fileInfo = new FileInfo(arg);
+                                                        var attr = fileInfo.Attributes;
 
-                                                        return new[] { fileInfo.FullName };
+                                                        const FileAttributes attributes = FileAttributes.ReadOnly |
+                                                            FileAttributes.Offline | FileAttributes.ReparsePoint;
+
+                                                        if (0 == (attr & attributes))
+                                                            return new[] { fileInfo.FullName };
+
+                                                        return Array.Empty<string>();
+                                                    }
+
+                                                    var dirInfo = new DirectoryInfo(arg);
+                                                    if (dirInfo.Exists)
+                                                    {
+                                                        return Directory.EnumerateFiles(arg, "*.zip",
+                                                            SearchOption.AllDirectories);
                                                     }
                                                 }
                                                 catch (IOException)
-                                                { }
+                                                {
+                                                }
 
                                                 return Array.Empty<string>();
                                             })
@@ -88,13 +98,11 @@ namespace FixVox
             {
                 var tempDirTask = _tempDirManager.GetDirectoryAsync(fileInfo.Name);
 
-                using (var inputStream = await CreateReadStreamAsync(fileInfo).ConfigureAwait(false))
-                {
-                    var tempDir = await tempDirTask.ConfigureAwait(false);
+                await using var inputStream = await CreateReadStreamAsync(fileInfo).ConfigureAwait(false);
+                var tempDir = await tempDirTask.ConfigureAwait(false);
 
-                    if (!await transform(inputStream, tempDir).ConfigureAwait(false))
-                        return null;
-                }
+                if (!await transform(inputStream, tempDir).ConfigureAwait(false))
+                    return null;
             }
             catch (Exception ex)
             {
@@ -156,7 +164,7 @@ namespace FixVox
             if (fileInfo.Length > 512 * 1024)
                 return fileStream;
 
-            using (fileStream)
+            await using (fileStream)
             {
                 var ms = new MemoryStream((int)fileInfo.Length);
 

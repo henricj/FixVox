@@ -19,8 +19,8 @@
 // DEALINGS IN THE SOFTWARE.
 
 using System.IO;
+using System.Text.Json;
 using System.Threading.Tasks;
-using Newtonsoft.Json;
 
 namespace FixVox
 {
@@ -30,7 +30,7 @@ namespace FixVox
         {
             var ms = new MemoryStream(checked((int)fileInfo.Length));
 
-            using (var file = new FileStream(fileInfo.FullName, FileMode.Open, FileAccess.Read, FileShare.Read, 16 * 1024, FileOptions.Asynchronous | FileOptions.SequentialScan))
+            await using (var file = new FileStream(fileInfo.FullName, FileMode.Open, FileAccess.Read, FileShare.Read, 16 * 1024, FileOptions.Asynchronous | FileOptions.SequentialScan))
             {
                 await file.CopyToAsync(ms).ConfigureAwait(false);
             }
@@ -47,18 +47,20 @@ namespace FixVox
 
         public static async Task<string> ReadStringAsync(FileInfo fileInfo)
         {
-            using (var sr = await CopyToMemoryReaderAsync(fileInfo).ConfigureAwait(false))
-            {
-                return sr.ReadToEnd();
-            }
+            using var sr = await CopyToMemoryReaderAsync(fileInfo).ConfigureAwait(false);
+
+            return await sr.ReadToEndAsync().ConfigureAwait(false);
         }
 
-        public static async Task<TResult> DeserializeAsync<TResult>(FileInfo fileInfo)
+        public static async ValueTask<TResult> DeserializeAsync<TResult>(FileInfo fileInfo)
+        where TResult : new()
         {
-            return JsonConvert.DeserializeObject<TResult>(await ReadStringAsync(fileInfo).ConfigureAwait(false));
+            await using var stream = new FileStream(fileInfo.FullName, FileMode.Open, FileAccess.Read, FileShare.Read, 0, FileOptions.Asynchronous | FileOptions.SequentialScan);
+
+            return await JsonSerializer.DeserializeAsync<TResult>(stream).ConfigureAwait(false);
         }
 
-        public static async Task<TResult> DeserializeAsync<TResult>(string path)
+        public static async ValueTask<TResult> DeserializeAsync<TResult>(string path)
             where TResult : new()
         {
             var fileInfo = new FileInfo(path);
@@ -66,7 +68,7 @@ namespace FixVox
             if (!fileInfo.Exists)
                 return new TResult();
 
-            return JsonConvert.DeserializeObject<TResult>(await ReadStringAsync(fileInfo).ConfigureAwait(false));
+            return await DeserializeAsync<TResult>(fileInfo).ConfigureAwait(false);
         }
     }
 }

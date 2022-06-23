@@ -29,8 +29,8 @@ namespace FixVox
 {
     public sealed class TempDirManager
     {
-        readonly ConcurrentDictionary<string, Task<DirectoryInfo>> _tempDirs = new ConcurrentDictionary<string, Task<DirectoryInfo>>(StringComparer.InvariantCultureIgnoreCase);
-        readonly DirectoryInfo _temporaryDirectory = new DirectoryInfo(Path.Combine(Path.GetTempPath(), "FixVox-" + Path.GetRandomFileName()));
+        readonly ConcurrentDictionary<string, Task<DirectoryInfo>> _tempDirs = new(StringComparer.InvariantCultureIgnoreCase);
+        readonly DirectoryInfo _temporaryDirectory = new(Path.Combine(Path.GetTempPath(), "FixVox-" + Path.GetRandomFileName()));
 
         public void Dispose()
         {
@@ -69,8 +69,7 @@ namespace FixVox
 
         public async Task CleanupDirectoryAsync(string key)
         {
-            Task<DirectoryInfo> dirTask;
-            if (!_tempDirs.TryRemove(key, out dirTask))
+            if (!_tempDirs.TryRemove(key, out var dirTask))
                 return;
 
             try
@@ -111,8 +110,7 @@ namespace FixVox
         {
             for (; ; )
             {
-                Task<DirectoryInfo> directoryInfoTask;
-                if (_tempDirs.TryGetValue(key, out directoryInfoTask))
+                if (_tempDirs.TryGetValue(key, out var directoryInfoTask))
                     return directoryInfoTask;
 
                 var task = new Task<Task<DirectoryInfo>>(

@@ -262,24 +262,19 @@ namespace FixVox
 
         static int GetBitrate(int version, int layer, int bitrateIndex)
         {
-            short[] lookup = null;
+            short[] lookup;
 
             if (version > 1)
                 lookup = layer == 1 ? V2L1 : V2L23;
             else
             {
-                switch (layer)
+                lookup = layer switch
                 {
-                    case 1:
-                        lookup = V1L1;
-                        break;
-                    case 2:
-                        lookup = V1L2;
-                        break;
-                    case 3:
-                        lookup = V1L3;
-                        break;
-                }
+                    1 => V1L1,
+                    2 => V1L2,
+                    3 => V1L3,
+                    _ => null
+                };
             }
 
             if (null == lookup)
@@ -302,20 +297,12 @@ namespace FixVox
 
         static int GetFrameSize(int version, int layer, int bitrate, int sampleRate, bool paddingFlag)
         {
-            int samplesPerFrame8;
-
-            switch (layer)
+            var samplesPerFrame8 = layer switch
             {
-                case 1:
-                    samplesPerFrame8 = 12;
-                    break;
-                case 3:
-                    samplesPerFrame8 = 1 == version ? 144 : 72;
-                    break;
-                default:
-                    samplesPerFrame8 = 144;
-                    break;
-            }
+                1 => 12,
+                3 => 1 == version ? 144 : 72,
+                _ => 144
+            };
 
             var slotSize = 1 == layer ? 4 : 1;
 

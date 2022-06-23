@@ -30,16 +30,14 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using TagLib;
-using File = TagLib.File;
-using Tag = TagLib.Id3v2.Tag;
 
 namespace FixVox
 {
     class FixVox
     {
-        public static readonly ReadOnlyByteVector TPUB = "TPUB";
-        public static readonly ReadOnlyByteVector TLEN = "TLEN";
-        public static readonly ReadOnlyByteVector TRCK = "TRCK";
+        static readonly ReadOnlyByteVector TPUB = "TPUB";
+        static readonly ReadOnlyByteVector TLEN = "TLEN";
+        static readonly ReadOnlyByteVector TRCK = "TRCK";
 
         static readonly char[] InvalidFileNameChars;
         static readonly HashSet<char> InvalidFileNameCharSet;
@@ -57,44 +55,42 @@ namespace FixVox
 
         public async Task<bool> TransformFileAsync(Stream inputStream, DirectoryInfo directoryInfo)
         {
-            using (var zip = new ZipArchive(inputStream, ZipArchiveMode.Read))
+            using var zip = new ZipArchive(inputStream, ZipArchiveMode.Read);
+            var sorted = zip.Entries
+                .Where(e => string.Equals(Path.GetExtension(e.Name), ".mp3", StringComparison.OrdinalIgnoreCase))
+                .OrderBy(e => e.Name, StringComparer.InvariantCultureIgnoreCase)
+                .ToArray();
+
+            var dir = directoryInfo.FullName;
+
+            // ReSharper disable once AccessToDisposedClosure
+            await Task.Factory.StartNew(() => zip.ExtractToDirectory(dir), CancellationToken.None, TaskCreationOptions.LongRunning, ZipScheduler).ConfigureAwait(false);
+
+            var files = directoryInfo.EnumerateFiles("*.mp3")
+                .OrderBy(fi => fi.Name, StringComparer.InvariantCultureIgnoreCase)
+                .ToArray();
+
+            // TODO: Compare "files" with "sorted"?  They should match.
+
+            Debug.Assert(sorted.Length == files.Length, "Sorted/files mismatch");
+
+            var length = files.Length;
+
+            var trackFormat = GetTrackFormat((uint)length);
+
+            var tasks = new List<Task>(length);
+
+            for (var i = 0; i < sorted.Length; ++i)
             {
-                var sorted = zip.Entries
-                                .Where(e => string.Equals(Path.GetExtension(e.Name), ".mp3", StringComparison.OrdinalIgnoreCase))
-                                .OrderBy(e => e.Name, StringComparer.InvariantCultureIgnoreCase)
-                                .ToArray();
+                var trackId = i + 1;
+                var fileInfo = files[i];
 
-                var dir = directoryInfo.FullName;
+                var task = FixEntryAsync(fileInfo, (uint)trackId, (uint)length, trackFormat);
 
-                // ReSharper disable once AccessToDisposedClosure
-                await Task.Factory.StartNew(() => zip.ExtractToDirectory(dir), CancellationToken.None, TaskCreationOptions.LongRunning, ZipScheduler).ConfigureAwait(false);
-
-                var files = directoryInfo.EnumerateFiles("*.mp3")
-                                         .OrderBy(fi => fi.Name, StringComparer.InvariantCultureIgnoreCase)
-                                         .ToArray();
-
-                // TODO: Compare "files" with "sorted"?  They should match.
-
-                Debug.Assert(sorted.Length == files.Length, "Sorted/files mismatch");
-
-                var length = files.Length;
-
-                var trackFormat = GetTrackFormat((uint)length);
-
-                var tasks = new List<Task>(length);
-
-                for (var i = 0; i < sorted.Length; ++i)
-                {
-                    var trackId = i + 1;
-                    var fileInfo = files[i];
-
-                    var task = FixEntryAsync(fileInfo, (uint)trackId, (uint)length, trackFormat);
-
-                    tasks.Add(task);
-                }
-
-                await Task.WhenAll(tasks);
+                tasks.Add(task);
             }
+
+            await Task.WhenAll(tasks);
 
             return true;
         }
@@ -123,12 +119,14 @@ namespace FixVox
 
         async Task FixEntryAsync(FileInfo fileInfo, uint trackId, uint trackCount, string trackFormat)
         {
-            using (var readStream = new FileStream(fileInfo.FullName, FileMode.Open, FileAccess.Read, FileShare.Read, 64 * 1024, FileOptions.Asynchronous))
+            var readStream = new FileStream(fileInfo.FullName, FileMode.Open, FileAccess.Read, FileShare.Read, 64 * 1024, FileOptions.Asynchronous);
+
+            await using (readStream.ConfigureAwait(false))
             {
                 string album = null;
                 string artist = null;
 
-                using (var readFile = File.Create(new NonClosingFileAbstraction(fileInfo.FullName, readStream)))
+                using (var readFile = TagLib.File.Create(new NonClosingFileAbstraction(fileInfo.FullName, readStream)))
                 {
                     var tag = readFile.GetTag(TagTypes.Id3v2);
 
@@ -148,8 +146,7 @@ namespace FixVox
                     artist = "Unknown";
                 else
                 {
-                    string preferredArtist;
-                    if (_artists.TryGetValue(artist, out preferredArtist))
+                    if (_artists.TryGetValue(artist, out var preferredArtist))
                         artist = preferredArtist;
 
                     artist = ScrubFileName(artist);
@@ -168,40 +165,39 @@ namespace FixVox
 
                 var fullTrackName = Path.Combine(trackPath, trackName);
 
-                using (var writeStream = new FileStream(fullTrackName, FileMode.Create, FileAccess.ReadWrite, FileShare.None, 64 * 1024, FileOptions.Asynchronous))
-                {
-                    await readStream.CopyToAsync(writeStream, 64 * 1024).ConfigureAwait(false);
+                await using var writeStream = new FileStream(fullTrackName, FileMode.Create, FileAccess.ReadWrite, FileShare.None,
+                    64 * 1024, FileOptions.Asynchronous);
 
-                    readStream.Seek(0, SeekOrigin.Begin);
+                await readStream.CopyToAsync(writeStream, 64 * 1024).ConfigureAwait(false);
 
-                    var duration = await MeasureDurationAsync(readStream).ConfigureAwait(false);
+                readStream.Seek(0, SeekOrigin.Begin);
 
-                    writeStream.Seek(0, SeekOrigin.Begin);
+                var duration = await MeasureDurationAsync(readStream).ConfigureAwait(false);
 
-                    //await writeStream.FlushAsync().ConfigureAwait(false);
+                writeStream.Seek(0, SeekOrigin.Begin);
 
-                    using (var writeFile = File.Create(new NonClosingFileAbstraction(trackName, writeStream)))
-                    {
-                        var writeTags = writeFile.GetTag(TagTypes.Id3v2, true) as Tag;
+                //await writeStream.FlushAsync().ConfigureAwait(false);
 
-                        if (null == writeTags)
-                            return;
+                using var writeFile = TagLib.File.Create(new NonClosingFileAbstraction(trackName, writeStream));
 
-                        writeTags.Disc = 1;
-                        writeTags.DiscCount = 1;
+                if (writeFile.GetTag(TagTypes.Id3v2, true) is not TagLib.Id3v2.Tag writeTags)
+                    return;
 
-                        writeTags.TrackCount = trackCount;
-                        writeTags.SetTextFrame(TRCK, trackId.ToString(trackFormat, CultureInfo.InvariantCulture) + '/' + trackCount.ToString(trackFormat, CultureInfo.InvariantCulture));
+                writeTags.Disc = 1;
+                writeTags.DiscCount = 1;
 
-                        writeTags.SetTextFrame(TPUB, "LibriVox");
+                writeTags.TrackCount = trackCount;
+                writeTags.SetTextFrame(TRCK,
+                    trackId.ToString(trackFormat, CultureInfo.InvariantCulture) + '/' +
+                    trackCount.ToString(trackFormat, CultureInfo.InvariantCulture));
 
-                        writeTags.SetTextFrame(TLEN, duration.TotalMilliseconds.ToString(NumberFormatInfo.InvariantInfo));
+                writeTags.SetTextFrame(TPUB, "LibriVox");
 
-                        writeTags.Genres = new[] { "Audiobook" };
+                writeTags.SetTextFrame(TLEN, duration.TotalMilliseconds.ToString(NumberFormatInfo.InvariantInfo));
 
-                        writeFile.Save();
-                    }
-                }
+                writeTags.Genres = new[] { "Audiobook" };
+
+                writeFile.Save();
             }
         }
 
@@ -211,47 +207,47 @@ namespace FixVox
 
             var idx = path.IndexOfAny(InvalidFileNameChars);
 
-            if (idx >= 0)
+            if (idx < 0)
+                return path.Trim();
+
+            var sb = new StringBuilder();
+
+            foreach (var c in path)
             {
-                var sb = new StringBuilder();
-
-                foreach (var c in path)
-                {
-                    if (!InvalidFileNameCharSet.Contains(c))
-                        sb.Append(c);
-                }
-
-                path = sb.ToString();
+                if (!InvalidFileNameCharSet.Contains(c))
+                    sb.Append(c);
             }
+
+            path = sb.ToString();
 
             return path.Trim();
         }
 
-        static int? GetId3Length(byte[] buffer, int offset, int length)
+        static int? GetId3Length(ReadOnlySpan<byte> buffer)
         {
-            if (length < 10)
+            if (buffer.Length < 10)
                 return null;
 
-            if ('I' != buffer[offset] || 'D' != buffer[offset + 1] || '3' != buffer[offset + 2])
+            if ('I' != buffer[0] || 'D' != buffer[1] || '3' != buffer[2])
                 return null;
 
-            var majorVersion = buffer[offset + 3];
+            var majorVersion = buffer[3];
 
             if (0xff == majorVersion)
                 return null;
 
-            var minorVersion = buffer[offset + 4];
+            var minorVersion = buffer[4];
 
             if (0xff == minorVersion)
                 return null;
 
-            var flags = buffer[offset + 5];
+            //var flags = buffer[offset + 5];
 
             var size = 0;
 
             for (var i = 0; i < 4; ++i)
             {
-                var b = buffer[offset + 6 + i];
+                var b = buffer[6 + i];
 
                 if (0 != (0x80 & b))
                     return null;
@@ -289,7 +285,7 @@ namespace FixVox
                 {
                     isFirst = false;
 
-                    var id3Length = GetId3Length(buffer, 0, read);
+                    var id3Length = GetId3Length(buffer.AsSpan(0, read));
 
                     if (id3Length.HasValue)
                         skip = id3Length.Value;
@@ -384,7 +380,7 @@ namespace FixVox
 
         #region Nested type: NonClosingFileAbstraction
 
-        class NonClosingFileAbstraction : File.IFileAbstraction
+        class NonClosingFileAbstraction : TagLib.File.IFileAbstraction
         {
             public NonClosingFileAbstraction(string name, Stream stream)
             {
@@ -395,9 +391,9 @@ namespace FixVox
 
             #region IFileAbstraction Members
 
-            public string Name { get; private set; }
-            public Stream ReadStream { get; private set; }
-            public Stream WriteStream { get; private set; }
+            public string Name { get; }
+            public Stream ReadStream { get; }
+            public Stream WriteStream { get; }
 
             public void CloseStream(Stream stream)
             {
