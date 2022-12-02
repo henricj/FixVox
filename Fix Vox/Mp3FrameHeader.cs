@@ -315,7 +315,7 @@ namespace FixVox
         {
             var samples = (1 == version) ? SamplesV1[layer] : SamplesV2[layer];
 
-            return FullResolutionTimeSpan.FromSeconds(samples / (double)sampleRate);
+            return TimeSpan.FromSeconds(samples / (double)sampleRate);
         }
     }
 }
